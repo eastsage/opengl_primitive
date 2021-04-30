@@ -13,8 +13,9 @@ class Context {
 public:
     static ContextUPtr Create();
     void CreateBox();
-    void CreateCylinder(float topRadius, float botRadius, int segment, float height);
+    void CreateCylinder(float upperRadius, float lowerRadius, int segment, float height);
     void CreateSphere(float radius, int sectorCount, int stackCount);
+    void CreateDonut(float ringRadius, float tubeRadius, int rsegment, int csegment, int texture);
     void Render();    
     void ProcessInput(GLFWwindow* window);
     void Reshape(int width, int height);
@@ -51,9 +52,10 @@ private:
 
     //회전각
     glm::vec3 m_rotation { glm::vec3(0.0f, 0.0f, 0.0f) };
-
+    //각도조절
+    glm::vec3 m_radius1 { glm::vec3(0.0f, 0.0f, 0.0f) };
     //크기조절
-    glm::vec3 m_scale1  { glm::vec3(1.0f, 1.0f, 1.0f) };
+    glm::vec3 m_scale1 { glm::vec3(1.0f, 1.0f, 1.0f) };
 
     int m_width { WINDOW_WIDTH };
     int m_height { WINDOW_HEIGHT };
@@ -68,12 +70,20 @@ private:
 
     const float pi = 3.141592f;
 
-    //실린더 멤버
-    float c_topRadius = 0.5f;
-    float c_botRadius = 0.5f;
+
+    //vertices count, triangles count
+    int m_boxVerticesCount;
+    int m_boxTrianglesCount;
+    int m_cylinderVerticesCount;
+    int m_ctylinderTrianglesCount;
+    int m_sphereVerticesCount;
+    int m_sphereTrianglesCount;
+    //cylinder mem
+    float c_upperRadius = 0.5f;
+    float c_lowerRadius = 0.5f;
     int c_segment = 32; 
     float c_height = 1.0f;
-    //스피어 멤버
+    //sphere mem
     float s_radius = 0.5f;
     int s_sectorCount = 32;
     int s_stackCount = 16;

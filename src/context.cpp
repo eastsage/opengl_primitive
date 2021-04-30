@@ -85,7 +85,7 @@ bool Context::Init() {
         return false;
     SPDLOG_INFO("program id: {}", m_program->Get());
 
-    glClearColor(0.5f, 0.5f, 0.5f, 0.0f);
+    glClearColor(0.5f, 0.5f, 0.9f, 0.0f);
 
     // 이미지 로딩
     auto image0 = Image::Load("./image/wood.png");
@@ -109,11 +109,11 @@ bool Context::Init() {
 
 void Context::Render() {
     //imgui에 필요한 변수들
-    const char* texture[] = { "wood", "metal", "earth"};
-    static int texture_current = 0; 
+    const char* texture[] = { "wood", "metal", "earth" };
+    static int texture_select = 0; 
     static bool animation = false;
-    const char* primitive[] = { "box", "cylinder", "sphere", "donut"};
-    static int primitive_current = 0; 
+    const char* primitive[] = { "box", "cylinder", "sphere", "donut" };
+    static int primitive_select = 0; 
     
     //imgui 코드
     if (ImGui::Begin("ui window")) {
@@ -124,9 +124,9 @@ void Context::Render() {
         if (ImGui::Button("reset clear color")) {
             m_clearColor.r = 0.5f;
             m_clearColor.g = 0.5f;
-            m_clearColor.b = 0.5f;
+            m_clearColor.b = 0.9f;
             m_clearColor.a = 0.0f;
-            glClearColor(0.5f, 0.5f, 0.5f, 0.0f);
+            glClearColor(0.5f, 0.5f, 0.9f, 0.0f);
         }
         ImGui::Separator();
         ImGui::DragFloat3("camera pos", glm::value_ptr(m_cameraPos), 0.1f);
@@ -139,20 +139,24 @@ void Context::Render() {
             m_cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
         }
         ImGui::Separator();
-        ImGui::Combo("primitive", &primitive_current, primitive, IM_ARRAYSIZE(primitive));
-        switch (primitive_current) {
-            case 0: ImGui::LabelText("# vertices", (const char)glBufferData(GL_BUFFER_DATA_SIZE));
-                    ImGui::LabelText("trianles", "12");
+        ImGui::Combo("primitive", &primitive_select, primitive, IM_ARRAYSIZE(primitive));
+        switch (primitive_select) {
+            case 0: ImGui::LabelText("# vertices", "%d", m_boxVerticesCount);
+                    ImGui::LabelText("trianles", "%d", m_boxTrianglesCount);
                     break;
-            case 1: ImGui::DragFloat("topradius", &c_topRadius, 0.1f, 0.1f, 100.0f);
-                    ImGui::DragFloat("botradius", &c_botRadius, 0.1f, 0.1f, 100.0f);
+            case 1: ImGui::LabelText("# vertices", "%d", m_cylinderVerticesCount);
+                    ImGui::LabelText("# triangles", "%d", m_ctylinderTrianglesCount);
+                    ImGui::DragFloat("upperRadius", &c_upperRadius, 0.1f, 0.1f, 100.0f);
+                    ImGui::DragFloat("lowerRadius", &c_lowerRadius, 0.1f, 0.1f, 100.0f);
                     ImGui::DragInt("segment", &c_segment, 1, 3, 128);
                     ImGui::DragFloat("height", &c_height, 0.1f, 0.1f, 100.0f);
                     if (ImGui::Button("reset cylinder")) {
-                        c_topRadius = 0.5f; c_botRadius = 0.5f;
+                        c_upperRadius = 0.5f; c_lowerRadius = 0.5f;
                         c_segment = 32; c_height = 1.0f;
                     } break;
-            case 2: ImGui::DragFloat("radius", &s_radius, 0.1f, 0.1f, 100.0f);
+            case 2: ImGui::LabelText("# vertices", "%d", m_sphereVerticesCount);
+                    ImGui::LabelText("# Triangles", "%d", m_sphereTrianglesCount);
+                    ImGui::DragFloat("radius", &s_radius, 0.1f, 0.1f, 100.0f);
                     ImGui::DragInt("stackcount", &s_stackCount, 1, 3, 100);
                     ImGui::DragInt("sectorcount", &s_sectorCount, 1, 3, 100);
                     if (ImGui::Button("reset sphere")) {
@@ -161,14 +165,16 @@ void Context::Render() {
                     }
                     break;
         }
-        ImGui::Combo("texture", &texture_current, texture, IM_ARRAYSIZE(texture));
+        ImGui::Combo("texture", &texture_select, texture, IM_ARRAYSIZE(texture));
         ImGui::Separator();
-        ImGui::Checkbox("animation", &animation);
-        ImGui::DragFloat3("rotation", glm::value_ptr(m_rotation), 0.01f);
         ImGui::DragFloat3("scale", glm::value_ptr(m_scale1), 0.01f);
+        ImGui::DragFloat3("rotation", glm::value_ptr(m_radius1), 0.01f);
+        ImGui::Checkbox("animation", &animation);
+        ImGui::DragFloat3("rot speed", glm::value_ptr(m_rotation), 0.01f);
         ImGui::Separator();
         if (ImGui::Button("reset transform")) {
             m_rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+            m_radius1 = glm::vec3(0.0f, 0.0f, 0.0f);
             m_scale1 = glm::vec3(1.0f, 1.0f, 1.0f);
         }
         ImGui::Separator();
@@ -181,7 +187,7 @@ void Context::Render() {
 
 
     //텍스처 선택
-    switch(texture_current) {
+    switch(texture_select) {
 
         case 0: glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, m_texture0->Get());
@@ -211,65 +217,104 @@ void Context::Render() {
 
     //스케일 조절 변수
     glm::mat4 m_scale2 { glm::scale(glm::mat4(1.0f), m_scale1) };
-
+    //m_rotation = m_radius1;
     //도형 선택 및 애니메이션 적용
-    switch (primitive_current) {
+    switch (primitive_select) {
 
         case 0: CreateBox();
-                if(!animation){
-                    m_transform = m_projection * m_view * m_scale2;
-                    m_program->SetUniform("transform", m_transform);
-                    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+                if (!animation) {
+                    if ( m_radius1 == glm::vec3( 0.0f, 0.0f, 0.0f) ) {
+                        m_transform = m_projection * m_view * m_scale2;
+                        m_program->SetUniform("transform", m_transform);
+                        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
                     }
                     else {
-                        if (m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f)) {
+                        auto model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), m_radius1);
+                        m_transform = m_projection * m_view * m_scale2 * model;
+                        m_program->SetUniform("transform", m_transform);
+                        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+                    }
+                }
+                else {
+                    if (m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f) && m_radius1 == glm::vec3( 0.0f, 0.0f, 0.0f)) {
                             m_transform = m_projection * m_view * m_scale2;
                             m_program->SetUniform("transform", m_transform);
                             glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-                        }
-                        else {
-                            auto model = glm::rotate(glm::mat4(1.0f),
-                                glm::radians((float)glfwGetTime() * 120.0f), m_rotation);
+                    }
+                    else if ( m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f) && m_radius1 != glm::vec3( 0.0f, 0.0f, 0.0f)) {
+                            auto model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), m_radius1);
                             m_transform = m_projection * m_view * m_scale2 * model;
                             m_program->SetUniform("transform", m_transform);
                             glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-                        }
+                    }
+                    else {
+                        auto model = glm::rotate(glm::mat4(1.0f), glm::radians((float)glfwGetTime() * 120.0f), m_rotation);
+                        m_transform = m_projection * m_view * m_scale2 * model;
+                        m_program->SetUniform("transform", m_transform);
+                        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+                    }
                 }break;
-        case 1: CreateCylinder(c_topRadius, c_botRadius, c_segment, c_height);
-                if(!animation){
-                    m_transform = m_projection * m_view * m_scale2;
-                    m_program->SetUniform("transform", m_transform);
-                    glDrawElements(GL_TRIANGLES, m_clyinderIndexCount, GL_UNSIGNED_INT, 0);
-                }
-                else {
-                    if (m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f)) {
+        case 1: CreateCylinder(c_upperRadius, c_lowerRadius, c_segment, c_height);
+                if (!animation) {
+                    if ( m_radius1 == glm::vec3( 0.0f, 0.0f, 0.0f) ) {
                         m_transform = m_projection * m_view * m_scale2;
                         m_program->SetUniform("transform", m_transform);
                         glDrawElements(GL_TRIANGLES, m_clyinderIndexCount, GL_UNSIGNED_INT, 0);
                     }
                     else {
-                        auto model = glm::rotate(glm::mat4(1.0f),
-                            glm::radians((float)glfwGetTime() * 120.0f), m_rotation);
+                        auto model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), m_radius1);
+                        m_transform = m_projection * m_view * m_scale2 * model;
+                        m_program->SetUniform("transform", m_transform);
+                        glDrawElements(GL_TRIANGLES, m_clyinderIndexCount, GL_UNSIGNED_INT, 0);
+                    }
+                }
+                else {
+                    if (m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f) && m_radius1 == glm::vec3( 0.0f, 0.0f, 0.0f)) {
+                            m_transform = m_projection * m_view * m_scale2;
+                            m_program->SetUniform("transform", m_transform);
+                            glDrawElements(GL_TRIANGLES, m_clyinderIndexCount, GL_UNSIGNED_INT, 0);
+                    }
+                    else if ( m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f) && m_radius1 != glm::vec3( 0.0f, 0.0f, 0.0f)) {
+                            auto model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), m_radius1);
+                            m_transform = m_projection * m_view * m_scale2 * model;
+                            m_program->SetUniform("transform", m_transform);
+                            glDrawElements(GL_TRIANGLES, m_clyinderIndexCount, GL_UNSIGNED_INT, 0);
+                    }
+                    else {
+                        auto model = glm::rotate(glm::mat4(1.0f), glm::radians((float)glfwGetTime() * 120.0f), m_rotation);
                         m_transform = m_projection * m_view * m_scale2 * model;
                         m_program->SetUniform("transform", m_transform);
                         glDrawElements(GL_TRIANGLES, m_clyinderIndexCount, GL_UNSIGNED_INT, 0);
                     }
                 }break;
         case 2: CreateSphere(s_radius, s_sectorCount, s_stackCount);
-                if(!animation){
-                    m_transform = m_projection * m_view * m_scale2;
-                    m_program->SetUniform("transform", m_transform);
-                    glDrawElements(GL_TRIANGLES, m_sphereIndexCount, GL_UNSIGNED_INT, 0);
-                }
-                else {
-                    if (m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f)) {
+                if (!animation) {
+                    if ( m_radius1 == glm::vec3( 0.0f, 0.0f, 0.0f) ) {
                         m_transform = m_projection * m_view * m_scale2;
                         m_program->SetUniform("transform", m_transform);
                         glDrawElements(GL_TRIANGLES, m_sphereIndexCount, GL_UNSIGNED_INT, 0);
                     }
                     else {
-                        auto model = glm::rotate(glm::mat4(1.0f),
-                            glm::radians((float)glfwGetTime() * 120.0f), m_rotation);
+                        auto model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), m_radius1);
+                        m_transform = m_projection * m_view * m_scale2 * model;
+                        m_program->SetUniform("transform", m_transform);
+                        glDrawElements(GL_TRIANGLES, m_sphereIndexCount, GL_UNSIGNED_INT, 0);
+                    }
+                }
+                else {
+                    if (m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f) && m_radius1 == glm::vec3( 0.0f, 0.0f, 0.0f)) {
+                            m_transform = m_projection * m_view * m_scale2;
+                            m_program->SetUniform("transform", m_transform);
+                            glDrawElements(GL_TRIANGLES, m_sphereIndexCount, GL_UNSIGNED_INT, 0);
+                    }
+                    else if ( m_rotation == glm::vec3( 0.0f, 0.0f, 0.0f) && m_radius1 != glm::vec3( 0.0f, 0.0f, 0.0f)) {
+                            auto model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), m_radius1);
+                            m_transform = m_projection * m_view * m_scale2 * model;
+                            m_program->SetUniform("transform", m_transform);
+                            glDrawElements(GL_TRIANGLES, m_sphereIndexCount, GL_UNSIGNED_INT, 0);
+                    }
+                    else {
+                        auto model = glm::rotate(glm::mat4(1.0f), glm::radians((float)glfwGetTime() * 120.0f), m_rotation);
                         m_transform = m_projection * m_view * m_scale2 * model;
                         m_program->SetUniform("transform", m_transform);
                         glDrawElements(GL_TRIANGLES, m_sphereIndexCount, GL_UNSIGNED_INT, 0);
@@ -278,7 +323,7 @@ void Context::Render() {
     }
 }
 
-//box 구현 코드
+//box
 void Context::CreateBox() {
     float vertices[] = {
         -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
@@ -321,47 +366,47 @@ void Context::CreateBox() {
         20, 22, 21, 22, 20, 23,
     };
 
+    m_boxVerticesCount = 24;
+    m_boxTrianglesCount = sizeof(indices)/12;
     m_vertexLayout = VertexLayout::Create();
-    m_vertexBuffer = Buffer::CreateWithData(GL_ARRAY_BUFFER, 
-        GL_STATIC_DRAW, vertices, sizeof(float) * 120);
+    m_vertexBuffer = Buffer::CreateWithData(GL_ARRAY_BUFFER, GL_STATIC_DRAW, vertices, sizeof(float) * 120);
 
     m_vertexLayout->SetAttrib(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 5, 0);
     m_vertexLayout->SetAttrib(2, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 5, sizeof(float) * 3);
 
-    m_indexBuffer = Buffer::CreateWithData(GL_ELEMENT_ARRAY_BUFFER,
-        GL_STATIC_DRAW, indices, sizeof(uint32_t) * 36);
+    m_indexBuffer = Buffer::CreateWithData(GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW, indices, sizeof(uint32_t) * 36);
 }
 
-//실린더 구현 코드
-void Context::CreateCylinder(float topRadius, float botRadius, int segment, float height) {
+//cylinder
+void Context::CreateCylinder(float upperRadius, float lowerRadius, int segment, float height) {
     std::vector<float> vertices;
     std::vector<uint32_t> indices;
 
-    //z축이 -인 원
+    //z축 -인 원
     vertices.push_back(0.0f);
     vertices.push_back(-height/2);
     vertices.push_back(0.0f);
     for (int i = 0; i < segment ; i++) {
         float angle = (360.0f / segment * i) * pi / 180.0f;
-        float x = cosf(angle) * botRadius;
-        float z = sinf(angle) * botRadius;
+        float x = cosf(angle) * lowerRadius;
+        float z = sinf(angle) * lowerRadius;
         vertices.push_back(x);
         vertices.push_back(-height/2);
         vertices.push_back(z);
     }
-    //z축이 +인 원
+    //z축 +인 원
     vertices.push_back(0.0f);
     vertices.push_back(height/2);
     vertices.push_back(0.0f);
     for (int i = 0; i < segment ; i++) {
         float angle = (360.0f / segment * i) * pi / 180.0f;
-        float x = cosf(angle) * topRadius;
-        float z = sinf(angle) * topRadius;
+        float x = cosf(angle) * upperRadius;
+        float z = sinf(angle) * upperRadius;
         vertices.push_back(x);
         vertices.push_back(height/2);
         vertices.push_back(z);
     }
-    //z축이 -인 원
+    //z축 -인 원
     for (int i = 0; i < segment; i++) {
         indices.push_back(0);
         indices.push_back(i + 1);
@@ -370,7 +415,7 @@ void Context::CreateCylinder(float topRadius, float botRadius, int segment, floa
         else
             indices.push_back(i + 2);
     }
-    //z축이 +인 원
+    //z축 +인 원
     for (int i = segment; i < segment * 2 + 1; i++) {
         indices.push_back(segment + 1);
         indices.push_back(i + 1);
@@ -379,7 +424,7 @@ void Context::CreateCylinder(float topRadius, float botRadius, int segment, floa
         else
             indices.push_back(i + 2);
     }
-    //두 원 사이를 채우는 코드
+    //원 사이를 채움
     for (int i = 1; i < segment; i++) {
         indices.push_back(i);
         indices.push_back(i + 1);
@@ -398,7 +443,8 @@ void Context::CreateCylinder(float topRadius, float botRadius, int segment, floa
     indices.push_back(segment * 2 + 1);
 
 
-    
+    m_cylinderVerticesCount = (segment + 1) * 3;
+    m_ctylinderTrianglesCount = segment * 4;
     m_vertexLayout = VertexLayout::Create();
     m_vertexBuffer = Buffer::CreateWithData(GL_ARRAY_BUFFER,
         GL_STATIC_DRAW, vertices.data(), sizeof(float) * vertices.size());
@@ -411,7 +457,7 @@ void Context::CreateCylinder(float topRadius, float botRadius, int segment, floa
     m_clyinderIndexCount = (int)indices.size();
 }
 
-//스피어 구현 코드
+//sphere
 void Context::CreateSphere(float radius, int sectorCount, int stackCount) {
     std::vector<float> vertices;
     std::vector<float> normals;
@@ -472,7 +518,8 @@ void Context::CreateSphere(float radius, int sectorCount, int stackCount) {
             }
         }
     }
-
+    m_sphereVerticesCount = ((2 * sectorCount - 1) * 2 * stackCount)/4;
+    m_sphereTrianglesCount = (2 * sectorCount - 1) * stackCount + 2;
     m_vertexLayout = VertexLayout::Create();
     m_vertexBuffer = Buffer::CreateWithData(GL_ARRAY_BUFFER,
         GL_STATIC_DRAW, vertices.data(), sizeof(float) * vertices.size());
@@ -483,4 +530,38 @@ void Context::CreateSphere(float radius, int sectorCount, int stackCount) {
         GL_STATIC_DRAW, indices.data(), sizeof(uint32_t) * indices.size());
 
     m_sphereIndexCount = (int)indices.size();
+}
+//torus
+void Context::CreateDonut(float ringRadius = 0.07, float tubeRadius = 0.15,
+            int rsegment = 16, int csegment = 8, int texture = 0) {
+    glFrontFace(GL_CW);
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+    const float TAU = 2 * pi;
+
+    for (int i = 0; i < rsegment; i++) {
+        glBegin(GL_QUAD_STRIP);
+        for (int j = 0; j <= csegment; j++) {
+            for (int k = 0; k <= 1; k++) {
+                double s = (i + k) % rsegment + 0.5;
+                double t = j % (csegment + 1);
+
+                double x = (tubeRadius + ringRadius * cos(s * TAU / rsegment)) * cos(t * TAU / csegment);
+                double y = (tubeRadius + ringRadius * cos(s * TAU / rsegment)) * sin(t * TAU / csegment);
+                double z = ringRadius * sin(s * TAU / rsegment);
+
+                double u = (i + k) / (float) rsegment;
+                double v = t / (float) csegment;
+
+                glTexCoord2d(u, v);
+                glNormal3f(2 * x, 2 * y, 2 * z);
+                glVertex3d(2 * x, 2 * y, 2 * z);
+            }
+        }
+        glEnd();
+    }
+
+//  glFrontFace(GL_CCW);
 }
